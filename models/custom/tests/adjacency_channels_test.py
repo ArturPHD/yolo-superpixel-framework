@@ -26,23 +26,18 @@ def create_dataset_from_source(dataset_path: str, source_images_path: str, num_i
                                   (e.g., E:\\MockDataset\\images).
         num_images (int): The number of random images to copy.
     """
-    # --- 1. Setup paths and directories ---
     dataset_path = Path(dataset_path)
     source_images_path = Path(source_images_path)
 
-    # Clean up the destination directory if it already exists
     if dataset_path.exists():
         shutil.rmtree(dataset_path)
 
-    # Create the required YOLO directory structure
     img_dir = dataset_path / 'train' / 'images'
     lbl_dir = dataset_path / 'train' / 'labels'
     img_dir.mkdir(parents=True, exist_ok=True)
     lbl_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- 2. Find and select source images ---
     print(f"Searching for images in '{source_images_path}' and its subdirectories...")
-    # Recursively find all common image types
     available_images = list(source_images_path.rglob('*.jpg')) + \
                        list(source_images_path.rglob('*.png')) + \
                        list(source_images_path.rglob('*.jpeg'))
@@ -52,29 +47,22 @@ def create_dataset_from_source(dataset_path: str, source_images_path: str, num_i
 
     print(f"Found {len(available_images)} total images.")
 
-    # Ensure we don't request more images than are available
     if num_images > len(available_images):
         print(
             f"Warning: Requested {num_images} images, but only {len(available_images)} are available. Using all available images.")
         num_images = len(available_images)
 
-    # Randomly select a subset of images from the list
     selected_images = random.sample(available_images, num_images)
     print(f"Randomly selected {num_images} images to create the dataset.")
 
-    # --- 3. Copy images and create dummy labels ---
     for src_img_path in selected_images:
-        # Define the destination path for the image
         dest_img_path = img_dir / src_img_path.name
-        # Copy the image file
         shutil.copy(src_img_path, dest_img_path)
 
-        # Create a corresponding dummy label file with the same name (but .txt extension)
         label_path = lbl_dir / f"{src_img_path.stem}.txt"
         with open(label_path, 'w') as f:
-            f.write("0 0.5 0.5 0.2 0.2")  # A single dummy object in the center
+            f.write("0 0.5 0.5 0.2 0.2")
 
-    # --- 4. Create the data.yaml configuration file ---
     data_yaml_content = f"""
 path: {dataset_path.resolve()}
 train: train/images
@@ -90,7 +78,6 @@ names: ['object']
 
 
 def main():
-    """Main function to run the Embedder integration test."""
     dataset_dir = Path.cwd() / "dummy_dataset_from_real_images"
     source_dir = r"E:\MockDataset\images"
 
