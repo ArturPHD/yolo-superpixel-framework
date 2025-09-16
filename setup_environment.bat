@@ -98,8 +98,6 @@ if not exist "models\vendor\SPiT\" (
         echo ERROR: Failed to clone SPiT repository.
         exit /b 1
     )
-    echo Removing .git directory from SPiT...
-    rmdir /s /q "models\vendor\SPiT\.git"
 ) else (
     echo SPiT repository already exists.
 )
@@ -111,8 +109,6 @@ if not exist "models\vendor\yolov12\" (
         echo ERROR: Failed to clone yolov12 repository.
         exit /b 1
     )
-    echo Removing .git directory from yolov12...
-    rmdir /s /q "models\vendor\yolov12\.git"
 ) else (
     echo yolov12 repository already exists.
 )
