@@ -109,7 +109,7 @@ def main():
         cfg.batch = 16
         cfg.workers = 0
         cfg.plots = False
-        #cfg.val = False
+        cfg.val = True
 
         print("\nInitializing EmbedderYOLOTrainer...")
         trainer = AdjacencyChannelsTrainer(overrides=vars(cfg))

@@ -87,3 +87,18 @@ class AdjacencyChannelsYOLOModel(DetectionModel):
             self.model[0] = new_conv_block
         else:
             raise TypeError("The model's first layer is not a standard ultralytics Conv block.")
+
+    def warmup(self, imgsz=(1, 3, 640, 640)):
+        """
+        Overrides the base warmup method to use a 5-channel input tensor,
+        preventing a channel mismatch error during validation or export.
+        """
+        # The device and dtype are attributes of the parent BaseModel class
+        if self.device.type != 'cpu':
+            # Create a dummy input tensor with the correct number of channels (5)
+            # Ignore the '3' from the input `imgsz` tuple and hardcode 5.
+            im = torch.zeros(imgsz[0], 5, imgsz[2], imgsz[3], dtype=self.dtype, device=self.device)
+
+            # Perform a forward pass to warm up the model
+            self.forward(im)
+        return self

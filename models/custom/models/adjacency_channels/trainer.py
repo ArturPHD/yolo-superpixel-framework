@@ -51,8 +51,9 @@ class AdjacencyChannelsTrainer(DetectionTrainer):
 
     def embedder_collate(self, batch):
         """
-        Correctly constructs the batch dictionary for the Ultralytics loss function,
-        including separate tensors for batch_idx, cls, and bboxes.
+        A robust collate function that handles variable numbers of objects,
+        preserves all necessary metadata, and gracefully handles missing keys
+        by providing default values.
         """
         # 1. Process images
         images = torch.stack([b['img'] for b in batch])
@@ -60,53 +61,43 @@ class AdjacencyChannelsTrainer(DetectionTrainer):
         device = next(self.edge_embedder.parameters()).device
         rgb_batch_gpu = rgb_batch_float.to(device)
         final_5_channel_batch = self.edge_embedder(rgb_batch_gpu)
-        print(f"Shape of 5-channel batch: {final_5_channel_batch.shape}")
 
-        # 2. Manually process labels and image paths
-        batch_idx_list = []
-        cls_list = []
-        bboxes_list = []
-        im_file_list = []
+        # 2. Manually process labels and all required metadata
+        batch_idx_list, cls_list, bboxes_list = [], [], []
 
-        print(f"Number of samples in batch: {len(batch)}")
+        other_keys = {
+            'im_file': [],
+            'ori_shape': [],
+            'resized_shape': [],
+            'ratio_pad': []
+        }
 
         for i, sample in enumerate(batch):
-            cls_tensor = sample.get('cls')
-            bboxes_tensor = sample.get('bboxes')
-            im_file = sample.get('im_file')
-
+            # Handle labels
+            cls_tensor, bboxes_tensor = sample.get('cls'), sample.get('bboxes')
             if cls_tensor is not None and bboxes_tensor is not None and len(cls_tensor) > 0:
-                batch_idx_list.append(torch.full((len(cls_tensor), 1), i))
+                batch_idx_list.append(torch.full((len(cls_tensor), 1), i, device=cls_tensor.device))
                 cls_list.append(cls_tensor)
                 bboxes_list.append(bboxes_tensor)
 
-            if im_file is not None:
-                im_file_list.append(im_file)
+            # THE FIX IS HERE: Use .get() to provide a default value (None) if a key is missing.
+            # This ensures all metadata lists have the same length as the number of images.
+            for key in other_keys:
+                other_keys[key].append(sample.get(key, None))
 
-        print(f"Number of detected objects in batch: {len(batch_idx_list)}")
-
-        # 3. Assemble the final batch dictionary with correct keys
-        collated_batch = {}
-        collated_batch['img'] = final_5_channel_batch.detach().cpu()
-        collated_batch['im_file'] = im_file_list
+        # 3. Assemble the final batch dictionary
+        collated_batch = {'img': final_5_channel_batch}
 
         if batch_idx_list:
-            collated_batch['batch_idx'] = torch.cat(batch_idx_list, 0)
-            collated_batch['cls'] = torch.cat(cls_list, 0)
+            collated_batch['batch_idx'] = torch.cat(batch_idx_list, 0).squeeze(-1)
+            collated_batch['cls'] = torch.cat(cls_list, 0).squeeze(-1)
             collated_batch['bboxes'] = torch.cat(bboxes_list, 0)
         else:
             collated_batch['batch_idx'] = torch.empty(0)
             collated_batch['cls'] = torch.empty(0)
             collated_batch['bboxes'] = torch.empty(0, 4)
 
-        print(f"Collated batch keys: {collated_batch.keys()}")
-        print(f"Shape of 'img' tensor: {collated_batch['img'].shape}")
-        print(f"Shape of 'batch_idx' tensor: {collated_batch['batch_idx'].shape}")
-        print(f"Shape of 'cls' tensor: {collated_batch['cls'].shape}")
-        print(f"Shape of 'bboxes' tensor: {collated_batch['bboxes'].shape}")
-
-        collated_batch['batch_idx'] = collated_batch['batch_idx'].squeeze()
-        collated_batch['cls'] = collated_batch['cls'].squeeze()
+        collated_batch.update(other_keys)
 
         return collated_batch
 
@@ -145,19 +136,10 @@ class AdjacencyChannelsTrainer(DetectionTrainer):
             return {}, 0.0
 
     def final_eval(self):
-        """
-        Conditionally overrides the final evaluation method.
-
-        If 'val=False' is set in the config, it skips the final evaluation
-        to prevent errors during testing.
-
-        If 'val=True', it calls the original final_eval method from the
-        parent class to run a full evaluation on the best saved model.
-        """
         if self.args.val:
-            # If validation is enabled, run the original final evaluation.
-            print("Validation is enabled, running final evaluation on the best model...")
-            super().final_eval()
+            print("Running final evaluation on the best model...")
+            self.load(self.best)
+            self.validator.args = self.args
+            super().validate()
         else:
-            # If validation is disabled, just print a message and do nothing.
             print("Validation is disabled (val=False), skipping final evaluation.")
