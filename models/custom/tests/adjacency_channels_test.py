@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 
 project_root = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(project_root))
 yolov12_lib_path = project_root / "models" / "vendor" / "yolov12"
 sys.path.insert(0, str(yolov12_lib_path))
 
@@ -89,6 +90,8 @@ def main():
         )
 
         cfg = get_cfg()
+        cfg.project = project_root / 'runs'
+        cfg.name = 'train_test'
         cfg.data = dummy_data_path
         cfg.model = 'yolov12.yaml'
         cfg.epochs = 3

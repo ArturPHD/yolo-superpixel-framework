@@ -12,12 +12,14 @@ from models.vendor.SPiT.spit.tokenizer.densesp import DenseSPEdgeEmbedder
 
 from .model import AdjacencyChannelsYOLOModel
 from .validator import AdjacencyChannelsYOLOModelValidator
+from .optimizer_factory import OptimizerFactory
 
 
 class AdjacencyChannelsTrainer(DetectionTrainer):
     """Custom trainer for the Adjacency Channels model."""
-    def __init__(self, overrides=None):
+    def __init__(self, overrides=None, training_strategy='full_model_decay_recommended'):
         super().__init__(overrides=overrides)
+        self.training_strategy = training_strategy
         self.edge_embedder = None
         self._init_embedder()
 
@@ -41,6 +43,10 @@ class AdjacencyChannelsTrainer(DetectionTrainer):
         else:
             return DataLoader(dataset=dataset, batch_size=batch_size, shuffle=mode == 'train',
                               num_workers=0, sampler=None, collate_fn=collate_fn, pin_memory=pin_memory_flag)
+
+    def setup_optimizer(self):
+        factory = OptimizerFactory(self.model, self.args)
+        return factory.create(strategy=self.training_strategy)
 
     def embedder_collate(self, batch):
         """
