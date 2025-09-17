@@ -7,7 +7,8 @@ data: data_configs\data.yaml
 epochs: 3
 batch: 2
 imgsz: 640
-workers: 1
+workers: 0
+plots: False
 name: 'adj-ch_yolo12n_v1'
 
 optimizer_strategy:

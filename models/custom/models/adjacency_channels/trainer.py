@@ -17,36 +17,55 @@ from .optimizer_factory import OptimizerFactory
 
 class AdjacencyChannelsTrainer(DetectionTrainer):
     """Custom trainer for the Adjacency Channels model."""
-    def __init__(self, overrides=None, training_strategy='full_model_decay_recommended'):
+    def __init__(self, overrides=None, optimizer_strategy_config=None):
         super().__init__(overrides=overrides)
-        self.training_strategy = training_strategy
+        self.optimizer_strategy_config = optimizer_strategy_config
         self.edge_embedder = None
         self._init_embedder()
 
     def _init_embedder(self):
         print("Initializing DenseSPEdgeEmbedder module...")
         self.edge_embedder = DenseSPEdgeEmbedder()
-        self.edge_embedder = self.edge_embedder.to(self.device).train()
+        self.edge_embedder.eval()
         print("Embedder module is ready.")
 
     def get_dataloader(self, dataset_path, batch_size=16, rank=0, mode='train'):
-        dataset = self.build_dataset(dataset_path, batch=batch_size, mode=mode)
+        """Builds and returns a DataLoader for a given dataset."""
+        assert mode in ['train', 'val']
+        dataset = self.build_dataset(dataset_path, mode=mode, batch=batch_size)
+        collate_fn = self.embedder_collate
 
-        collate_fn = self.embedder_collate if mode in ('train', 'val') else torch.utils.data.default_collate
-
-        pin_memory_flag = False
-
-        if self.args.workers > 0:
-            return InfiniteDataLoader(dataset=dataset, batch_size=batch_size, shuffle=mode == 'train',
-                                      num_workers=self.args.workers, sampler=None, collate_fn=collate_fn,
-                                      pin_memory=pin_memory_flag, rank=rank, mode=mode)
+        if mode == 'train':
+            if self.args.workers > 0:
+                return InfiniteDataLoader(dataset=dataset,
+                                          batch_size=batch_size,
+                                          shuffle=True,
+                                          num_workers=self.args.workers,
+                                          sampler=None,
+                                          collate_fn=collate_fn,
+                                          pin_memory=True)
+            else:
+                return DataLoader(dataset=dataset,
+                                  batch_size=batch_size,
+                                  shuffle=True,
+                                  num_workers=0,
+                                  sampler=None,
+                                  collate_fn=collate_fn,
+                                  pin_memory=False)
         else:
-            return DataLoader(dataset=dataset, batch_size=batch_size, shuffle=mode == 'train',
-                              num_workers=0, sampler=None, collate_fn=collate_fn, pin_memory=pin_memory_flag)
+            return DataLoader(dataset=dataset,
+                              batch_size=batch_size,
+                              shuffle=False,
+                              num_workers=self.args.workers,
+                              sampler=None,
+                              collate_fn=collate_fn,
+                              pin_memory=True)
 
     def setup_optimizer(self):
+        """Initializes the optimizer using the OptimizerFactory."""
         factory = OptimizerFactory(self.model, self.args)
-        return factory.create(strategy=self.training_strategy)
+        # Pass the entire config dictionary to the factory
+        return factory.create(config=self.optimizer_strategy_config)
 
     def embedder_collate(self, batch):
         """
@@ -57,8 +76,9 @@ class AdjacencyChannelsTrainer(DetectionTrainer):
         images = torch.stack([b['img'] for b in batch])
         rgb_batch_float = images.float() / 255.0
         device = next(self.edge_embedder.parameters()).device
-        rgb_batch_gpu = rgb_batch_float.to(device)
-        final_5_channel_batch = self.edge_embedder(rgb_batch_gpu)
+
+        with torch.no_grad():
+            final_5_channel_batch = self.edge_embedder(rgb_batch_float)
 
         batch_idx_list, cls_list, bboxes_list = [], [], []
 
@@ -82,7 +102,7 @@ class AdjacencyChannelsTrainer(DetectionTrainer):
             for key in other_keys:
                 other_keys[key].append(sample.get(key, None))
 
-        collated_batch = {'img': final_5_channel_batch}
+        collated_batch = {'img': final_5_channel_batch.detach()}
 
         if batch_idx_list:
             collated_batch['batch_idx'] = torch.cat(batch_idx_list, 0).squeeze(-1)
