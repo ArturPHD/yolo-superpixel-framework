@@ -181,6 +181,7 @@ cython_debug/
 .cursorindexingignore
 
 **/runs
+**/run_logs
 *.pt
 /.idea
 /models/vendor
