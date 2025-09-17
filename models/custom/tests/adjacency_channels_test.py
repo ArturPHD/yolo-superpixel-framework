@@ -80,7 +80,7 @@ names: ['object']
 
 def main():
     dataset_dir = Path.cwd() / "dummy_dataset_from_real_images"
-    source_dir = r"E:\MockDataset\images"
+    source_dir = r"..\..\..\img"
 
     try:
         dummy_data_path = dummy_data_path = create_dataset_from_source(
