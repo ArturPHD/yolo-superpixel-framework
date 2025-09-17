@@ -3,7 +3,7 @@ implementation_name: 'adjacency_channels'
 model_config:
   scale: 'n'
 
-data: data_configs\data.yaml
+data: data_configs/data.yaml
 epochs: 3
 batch: 2
 imgsz: 640
