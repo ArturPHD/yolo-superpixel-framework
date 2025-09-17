@@ -1,0 +1,21 @@
+implementation_name: 'adjacency_channels'
+
+model_config:
+  scale: 'n'
+
+data: data_configs\data.yaml
+epochs: 3
+batch: 2
+imgsz: 640
+workers: 1
+name: 'adj-ch_yolo12n_v1'
+
+optimizer_strategy:
+  type: 'differential_lr'
+  groups:
+    - name: 'backbone'
+      layer_cutoff: 9
+      lr_multiplier: 0.1
+    - name: 'neck_and_head'
+      layer_cutoff: 99
+      lr_multiplier: 1.0

@@ -1,0 +1,69 @@
+import argparse
+import sys
+from pathlib import Path
+import yaml
+
+project_root = Path(__file__).resolve().parent
+sys.path.insert(0, str(project_root))
+yolov12_lib_path = project_root / "models" / "vendor" / "yolov12"
+sys.path.insert(0, str(yolov12_lib_path))
+
+from models.custom.models.adjacency_channels.trainer import AdjacencyChannelsTrainer
+
+TRAINER_REGISTRY = {
+    'adjacency_channels': AdjacencyChannelsTrainer,
+}
+
+
+def find_config_file(config_identifier: str) -> Path:
+    """Finds the config file, searching in the 'configs' directory if a direct path fails."""
+    config_path = Path(config_identifier)
+    if config_path.is_file():
+        return config_path
+
+    default_path = (project_root / 'configs' / config_identifier).with_suffix('.yaml')
+    if default_path.is_file():
+        return default_path
+
+    raise FileNotFoundError(f"Config '{config_identifier}' not found as a direct path or in 'configs/'.")
+
+
+def main(args):
+    """Loads a config file, prepares arguments, and runs the selected trainer."""
+    try:
+        config_path = find_config_file(args.config)
+        print(f"Loading configuration from: {config_path}")
+
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+
+        implementation_name = config.pop('implementation_name')
+        TrainerClass = TRAINER_REGISTRY[implementation_name]
+
+        model_cfg = config.pop('model_config')
+        config['model'] = f"yolov12{model_cfg['scale']}.yaml"
+
+        config['project'] = str(project_root / 'runs' / implementation_name)
+
+        optimizer_strategy_config = config.pop('optimizer_strategy', None)
+
+        print(f"\nInitializing trainer for '{implementation_name}'...")
+        trainer = TrainerClass(
+            overrides=config,
+            optimizer_strategy_config=optimizer_strategy_config
+        )
+
+        trainer.train()
+        print("\n✅ Training finished successfully!")
+
+    except Exception as e:
+        print(f"\n❌ Training failed with an error: {e}")
+        raise e
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Run YOLO training from a config file.")
+    parser.add_argument('--config', type=str, required=True,
+                        help='Name of the experiment config file (e.g., my_experiment_v1).')
+    args = parser.parse_args()
+    main(args)
