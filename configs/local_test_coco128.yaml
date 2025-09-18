@@ -1,0 +1,22 @@
+implementation_name: 'adjacency_channels'
+
+model_config:
+  scale: 'n'
+
+data: data_configs/coco128.yaml
+epochs: 3
+batch: 4
+imgsz: 320
+workers: 2
+plots: False
+name: 'local_test_coco128'
+
+optimizer_strategy:
+  type: 'differential_lr'
+  groups:
+    - name: 'backbone'
+      layer_cutoff: 9
+      lr_multiplier: 0.1
+    - name: 'neck_and_head'
+      layer_cutoff: 99
+      lr_multiplier: 1.0
