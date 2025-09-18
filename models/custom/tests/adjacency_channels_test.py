@@ -1,35 +1,23 @@
 import shutil
 import random
-import numpy as np
-from PIL import Image
 from pathlib import Path
-
 import sys
+import yaml
 
+# --- Project Path Setup ---
 project_root = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(project_root))
 yolov12_lib_path = project_root / "models" / "vendor" / "yolov12"
 sys.path.insert(0, str(yolov12_lib_path))
 
-from ultralytics.cfg import get_cfg
+# --- Custom Imports ---
 from models.custom.models.adjacency_channels.trainer import AdjacencyChannelsTrainer
+from models.custom.models.adjacency_channels.validator import AdjacencyChannelsYOLOModelValidator
+from models.vendor.yolov12.ultralytics.cfg import get_cfg
 
 
-
-def create_dataset_from_source(dataset_path: str, source_images_path: str, num_images: int = 5):
-    """
-    Creates a new dataset by copying a random subset of images
-    from a source directory and generating dummy labels for them.
-
-    Args:
-        dataset_path (str): The path where the new dataset will be createde
-        source_images_path (str): The path to the directory containing source images
-                                  (e.g., E:\\MockDataset\\images).
-        num_images (int): The number of random images to copy.
-    """
-    dataset_path = Path(dataset_path)
-    source_images_path = Path(source_images_path)
-
+def create_dummy_dataset(dataset_path: Path, source_images_path: Path, num_images: int = 5):
+    """Creates a small dummy dataset for testing."""
     if dataset_path.exists():
         shutil.rmtree(dataset_path)
 
@@ -38,82 +26,102 @@ def create_dataset_from_source(dataset_path: str, source_images_path: str, num_i
     img_dir.mkdir(parents=True, exist_ok=True)
     lbl_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Searching for images in '{source_images_path}' and its subdirectories...")
-    available_images = list(source_images_path.rglob('*.jpg')) + \
-                       list(source_images_path.rglob('*.png')) + \
-                       list(source_images_path.rglob('*.jpeg'))
-
-    if not available_images:
-        raise FileNotFoundError(f"No images (.jpg, .png, .jpeg) found in {source_images_path}")
-
-    print(f"Found {len(available_images)} total images.")
-
-    if num_images > len(available_images):
-        print(
-            f"Warning: Requested {num_images} images, but only {len(available_images)} are available. Using all available images.")
-        num_images = len(available_images)
-
-    selected_images = random.sample(available_images, num_images)
-    print(f"Randomly selected {num_images} images to create the dataset.")
+    available_images = list(source_images_path.rglob('*.jpg')) + list(source_images_path.rglob('*.png'))
+    selected_images = random.sample(available_images, min(num_images, len(available_images)))
 
     for src_img_path in selected_images:
-        dest_img_path = img_dir / src_img_path.name
-        shutil.copy(src_img_path, dest_img_path)
-
-        label_path = lbl_dir / f"{src_img_path.stem}.txt"
-        with open(label_path, 'w') as f:
+        shutil.copy(src_img_path, img_dir / src_img_path.name)
+        with open(lbl_dir / f"{src_img_path.stem}.txt", 'w') as f:
             f.write("0 0.5 0.5 0.2 0.2")
 
-    data_yaml_content = f"""
-path: {dataset_path.resolve()}
-train: train/images
-val: train/images
-nc: 1
-names: ['object']
-"""
+    data_yaml_content = {
+        'path': str(dataset_path.resolve()),
+        'train': 'train/images',
+        'val': 'train/images',
+        'nc': 1,
+        'names': ['object']
+    }
     with open(dataset_path / 'data.yaml', 'w') as f:
-        f.write(data_yaml_content)
+        yaml.dump(data_yaml_content, f)
 
-    print(f"\n✅ Dataset created successfully at '{dataset_path}'")
-    return str(dataset_path / 'data.yaml')
+    print(f"\n✅ Dummy dataset created at '{dataset_path}'")
+    return dataset_path / 'data.yaml'
 
 
 def main():
-    dataset_dir = Path.cwd() / "dummy_dataset_from_real_images"
-    source_dir = r"..\..\..\img"
+    """
+    Runs a full end-to-end test: train, save, and then evaluate the saved model.
+    """
+    temp_dir = project_root / "temp_test_run"
+    dataset_dir = temp_dir / "dummy_dataset"
+    source_dir = project_root / "img"  # Assumes you have some test images in an 'img' folder
+
+    run_name = "full_cycle_test"
+    trained_model_path = None
 
     try:
-        dummy_data_path = dummy_data_path = create_dataset_from_source(
-            dataset_path=str(dataset_dir),
-            source_images_path=source_dir,
-            num_images=5
-        )
+        # --- STAGE 1: SETUP ---
+        print("--- STAGE 1: SETUP ---")
+        dummy_data_yaml_path = create_dummy_dataset(dataset_dir, source_dir, num_images=5)
 
-        cfg = get_cfg()
-        cfg.project = project_root / 'runs'
-        cfg.name = 'train_test'
-        cfg.data = dummy_data_path
-        cfg.model = 'yolov12.yaml'
-        cfg.epochs = 3
-        cfg.imgsz = 64
-        cfg.batch = 16
-        cfg.workers = 0
-        cfg.plots = False
-        cfg.val = True
+        # --- STAGE 2: TRAINING ---
+        print("\n--- STAGE 2: TRAINING ---")
+        train_cfg = get_cfg(overrides={
+            'model': 'yolov12n.yaml',
+            'data': str(dummy_data_yaml_path),
+            'epochs': 3,
+            'imgsz': 64,
+            'batch': 4,
+            'workers': 0,
+            'project': str(temp_dir / 'runs' / 'train'),
+            'name': run_name,
+            'val': True,
+            'plots': False
+        })
 
-        print("\nInitializing EmbedderYOLOTrainer...")
-        trainer = AdjacencyChannelsTrainer(overrides=vars(cfg))
-        print("Starting the training loop...")
+        trainer = AdjacencyChannelsTrainer(overrides=vars(train_cfg))
         trainer.train()
-        print("\n✅ Test passed! The Embedder architecture is working correctly.")
+
+        trained_model_path = trainer.best
+        print(f"\n✅ Training stage complete. Best model saved at: {trained_model_path}")
+
+        # --- STAGE 3: EVALUATION ---
+        print("\n--- STAGE 3: EVALUATION ---")
+        if not trained_model_path.exists():
+            raise FileNotFoundError("Best model was not saved after training.")
+
+        eval_cfg = get_cfg(overrides={
+            'model': str(trained_model_path),
+            'data': str(dummy_data_yaml_path),
+            'imgsz': 64,
+            'batch': 4,
+            'workers': 0,
+            'save_json': True,
+            'project': str(temp_dir / 'runs' / 'eval'),
+            'name': run_name
+        })
+
+        validator = AdjacencyChannelsYOLOModelValidator(args=eval_cfg)
+        validator()
+
+        # Check if the JSON file was created
+        json_path = validator.save_dir / "predictions.json"
+        if not json_path.exists():
+            raise FileNotFoundError(f"Evaluation JSON file was not created at {json_path}")
+
+        print(f"✅ Evaluation stage complete. Predictions saved to {json_path}")
+
+        print("\n🎉🎉🎉 FULL TEST PASSED! 🎉🎉🎉")
 
     except Exception as e:
-        print(f"\n❌ Test failed with an error: {e}")
+        print(f"\n❌ TEST FAILED with an error: {e}")
         raise e
     finally:
-        if dataset_dir.exists():
-            shutil.rmtree(dataset_dir)
-            print(f"Cleaned up dummy dataset at {dataset_dir}.")
+        # Cleanup
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir)
+            print(f"\nCleaned up temporary directory: {temp_dir}")
+
 
 if __name__ == '__main__':
     main()

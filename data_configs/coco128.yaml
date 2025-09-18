@@ -1,6 +1,7 @@
 path: ../datasets/coco128
 train: images/train2017
 val: images/train2017
+test: images/train2017
 
 names:
   0: person
