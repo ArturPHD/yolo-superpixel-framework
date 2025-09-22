@@ -62,11 +62,6 @@ class AdjacencyChannelsTrainer(DetectionTrainer):
         # Note: The validator will also benefit from the overridden preprocess_batch
         return AdjacencyChannelsYOLOModelValidator(self.test_loader, save_dir=self.save_dir, args=self.args)
 
-    def setup_optimizer(self):
-        """Initializes the optimizer using the OptimizerFactory."""
-        factory = OptimizerFactory(self.model, self.args)
-        return factory.create(config=self.optimizer_strategy_config)
-
     def final_eval(self):
         """
         Overrides and disables the final evaluation step to prevent a crash
@@ -75,3 +70,15 @@ class AdjacencyChannelsTrainer(DetectionTrainer):
         """
         print("Skipping final evaluation to avoid warmup bug with custom model. Best model is saved.")
         pass
+
+    def build_optimizer(self, model, name='auto', lr=0.001, momentum=0.9, decay=1e-5, iterations=1e5):
+        """
+        Overrides the default optimizer builder to use our OptimizerFactory.
+        """
+        if not self.optimizer_strategy_config:
+            print("No optimizer strategy provided. Using default Ultralytics optimizer.")
+            return super().build_optimizer(model, name, lr, momentum, decay, iterations)
+
+        print(f"Using OptimizerFactory to build optimizer with strategy: '{self.optimizer_strategy_config}'")
+        factory = OptimizerFactory(model, self.args)
+        return factory.create(strategy=self.optimizer_strategy_config)
