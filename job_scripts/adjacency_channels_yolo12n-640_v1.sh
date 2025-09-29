@@ -20,7 +20,9 @@ cd /leonardo_work/EUHPC_D18_074/Project/yolo-superpixel-framework
 echo "Activating virtual environment..."
 source .venv/bin/activate
 
-echo "Starting training script..."
-python run_training.py --config configs/adjacency_channels_yolo12n-640_v1.yaml
+echo "Launching DDP training with torchrun..."
+torchrun --nproc_per_node=4 \
+    run_training.py \
+    --config configs/adjacency_channels_yolo12n-640_v1.yaml
 
 echo "Job finished at $(date)"

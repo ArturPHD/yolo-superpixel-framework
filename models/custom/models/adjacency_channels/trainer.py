@@ -22,9 +22,13 @@ class AdjacencyChannelsTrainer(DetectionTrainer):
     The 3-to-5 channel conversion happens inside the main training loop.
     """
 
-    def __init__(self, overrides=None, optimizer_strategy_config=None):
+    def __init__(self, overrides=None, optimizer_strategy_config=None, local_rank=0, world_size=1):
         super().__init__(overrides=overrides)
         self.optimizer_strategy_config = optimizer_strategy_config
+
+        self.local_rank = local_rank
+        self.world_size = world_size
+        self.device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
 
         # Initialize the embedder and move it to the correct device
         self.edge_embedder = DenseSPEdgeEmbedder().to(self.device).eval()
@@ -82,3 +86,9 @@ class AdjacencyChannelsTrainer(DetectionTrainer):
         print(f"Using OptimizerFactory to build optimizer with strategy: '{self.optimizer_strategy_config}'")
         factory = OptimizerFactory(model, self.args)
         return factory.create(strategy=self.optimizer_strategy_config)
+
+    def is_distributed(self):
+        return torch.distributed.is_available() and torch.distributed.is_initialized()
+
+    def is_main_process(self):
+        return self.local_rank == 0

@@ -1,8 +1,11 @@
 import argparse
+import os
 import sys
 from pathlib import Path
 import yaml
 import torch
+from networkx.algorithms.centrality import local_reaching_centrality
+import torch.distributed as dist
 
 project_root = Path(__file__).resolve().parent
 sys.path.insert(0, str(project_root))
@@ -29,9 +32,31 @@ def find_config_file(config_identifier: str) -> Path:
     raise FileNotFoundError(f"Config '{config_identifier}' not found as a direct path or in 'configs/'.")
 
 
+
+def setup_distributed(local_rank: int):
+    torch.cuda.set_device(local_rank)
+    dist.init_process_group(backend="nccl")
+    world_size = dist.get_world_size()
+    rank = dist.get_rank()
+    return rank, world_size
+
+
+def cleanup_distributed():
+    if dist.is_initialized():
+        dist.destroy_process_group()
+
+
 def main(args):
     """Loads a config file, prepares arguments, and runs the selected trainer."""
     try:
+        using_ddp = "RANK" in os.environ and "WORLD_SIZE" in os.environ
+        rank = 0
+        if using_ddp:
+            rank, world_size = setup_distributed(args.local_rank)
+            is_main = rank == 0
+        else:
+            is_main = True
+
         config_path = find_config_file(args.config)
         print(f"Loading configuration from: {config_path}")
 
@@ -59,7 +84,9 @@ def main(args):
         print(f"\nInitializing trainer for '{implementation_name}'...")
         trainer = TrainerClass(
             overrides=config,
-            optimizer_strategy_config=optimizer_strategy_config
+            optimizer_strategy_config=optimizer_strategy_config,
+            local_rank=args.local_rank if using_ddp else 0,
+            world_size=world_size if using_ddp else 1
         )
 
         trainer.train()
