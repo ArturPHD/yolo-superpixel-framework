@@ -2,6 +2,7 @@ import argparse
 import sys
 from pathlib import Path
 import yaml
+import torch
 
 project_root = Path(__file__).resolve().parent
 sys.path.insert(0, str(project_root))
@@ -33,6 +34,14 @@ def main(args):
     try:
         config_path = find_config_file(args.config)
         print(f"Loading configuration from: {config_path}")
+
+        if torch.cuda.is_available():
+            if torch.cuda.device_count() == 1:
+                print("CUDA is available. Using GPU for training.")
+            else:
+                print(f"CUDA is available. Using {torch.cuda.device_count()} GPUs for training:")
+            for i in range(torch.cuda.device_count()):
+                print(f" - GPU {i}: {torch.cuda.get_device_name(i)}")
 
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
