@@ -10,6 +10,7 @@ imgsz: 640
 workers: 0
 plots: False
 name: 'adj-ch_yolo12n_v1'
+device: 0,1,2,3
 
 optimizer_strategy:
   type: 'differential_lr'
