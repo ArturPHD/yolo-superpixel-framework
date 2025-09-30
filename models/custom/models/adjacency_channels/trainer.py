@@ -1,4 +1,6 @@
+import os
 import torch
+import torch.distributed as dist
 from torch.utils.data import DataLoader
 from functools import partial
 from torch.utils.data import default_collate
@@ -25,6 +27,10 @@ class AdjacencyChannelsTrainer(DetectionTrainer):
     def __init__(self, overrides=None, optimizer_strategy_config=None):
         super().__init__(overrides=overrides)
         self.optimizer_strategy_config = optimizer_strategy_config
+
+        dist_info = get_dist_info()
+        print(f"[Init Trainer] rank={dist_info['rank']}, local_rank={dist_info['local_rank']}, "
+              f"world_size={dist_info['world_size']}, device={self.device}")
 
         # Initialize the embedder and move it to the correct device
         self.edge_embedder = DenseSPEdgeEmbedder().to(self.device).eval()
@@ -82,3 +88,14 @@ class AdjacencyChannelsTrainer(DetectionTrainer):
         print(f"Using OptimizerFactory to build optimizer with strategy: '{self.optimizer_strategy_config}'")
         factory = OptimizerFactory(model, self.args)
         return factory.create(strategy=self.optimizer_strategy_config)
+
+
+def get_dist_info():
+    if dist.is_available() and dist.is_initialized():
+        return {
+            "rank": dist.get_rank(),
+            "local_rank": int(os.getenv("LOCAL_RANK", -1)),
+            "world_size": dist.get_world_size(),
+        }
+    else:
+        return {"rank": -1, "local_rank": -1, "world_size": 1}

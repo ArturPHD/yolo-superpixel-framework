@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 import yaml
 import torch
+import torch.distributed as dist
 
 project_root = Path(__file__).resolve().parent
 sys.path.insert(0, str(project_root))
@@ -30,6 +31,14 @@ def find_config_file(config_identifier: str) -> Path:
 
 def main(args):
     """Loads a config file, prepares arguments, and runs the selected trainer."""
+
+    if dist.is_available() and dist.is_initialized():
+        print(
+            f"[Rank {dist.get_rank()}] Using device: {torch.cuda.current_device()} / {torch.cuda.get_device_name(torch.cuda.current_device())}")
+    else:
+        print(
+            f"Single-process training on device: {torch.cuda.current_device()} / {torch.cuda.get_device_name(torch.cuda.current_device())}")
+
     try:
         config_path = find_config_file(args.config)
         print(f"Loading configuration from: {config_path}")
